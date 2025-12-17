@@ -1,21 +1,11 @@
-# ===== CORE DEPENDENCIES =====
-streamlit==1.32.0
-pandas==2.1.4
-numpy==1.26.4
-
-# ===== GOOGLE SHEETS API =====
-gspread==6.1.2
-google-auth==2.35.0
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
-
-# ===== PDF GENERATION =====
-reportlab==4.2.5
-Pillow==10.4.0
-
-# ===== UTILITIES =====
-python-dateutil==2.9.0
-requests==2.32.3
-
-# ===== OPTIONAL (si WhatsApp está activo) =====
-python-dotenv==1.0.1
+google-auth==2.41.1
+google-auth-oauthlib==1.2.3
+gspread==6.2.1
+numpy==2.3.4
+pandas==2.3.3
+python-dateutil==2.9.0.post0
+reportlab==4.4.4
+requests==2.32.4
+requests-oauthlib==2.0.0
+streamlit==1.51.0
+types-python-dateutil==2.9.0.20250516
