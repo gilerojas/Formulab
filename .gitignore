@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+flab/
+venv/
+env/
+ENV/
+
+# Jupyter Notebooks (testing)
+notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# PDFs Generados
+ORDENES/
+tests_orden_pdf/
+*.pdf
+!Prototipo3_logo_GREQ.jpg
+!Prototipo3_logo_GREQ.png
+
+# Credenciales (CRÍTICO - NO SUBIR)
+*.json
+!package.json
+vocal-tracker-*.json
+.env
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporal
+*.log
+*.tmp
+temp/
+tmp/
+
+# Scripts de desarrollo
+scripts/debug_*.py
+scripts/test_*.py
+main.py
+
+# Archivos personales
+init_formulab.sh
