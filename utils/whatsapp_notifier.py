@@ -52,8 +52,7 @@ def enviar_notificacion_orden(
 
 📋 Orden: *{orden_id}*
 🎨 Fórmula: {marca} {tipo} - {color}
-📊 Volumen: *{galones} galones*
-⚖️ P/G: {pg:.2f} kg/gal"""
+📊 Volumen: *{galones} galones*"""
     
     # Agregar referencias si existen
     if ped_id or batch_id:
