@@ -6,9 +6,13 @@ Gestiona la generación y registro de órdenes de producción.
 
 import pandas as pd
 from datetime import datetime
+import pytz
 from .sheets_connector import get_worksheet, append_sheet, read_sheet
 from .formulas_manager import buscar_formula
 from formulab.formulab_api import procesar_formula
+
+# Timezone Santo Domingo
+TIMEZONE = pytz.timezone("America/Santo_Domingo")
 
 
 def _generar_orden_id():
@@ -21,12 +25,12 @@ def _generar_orden_id():
     try:
         data = read_sheet("Ordenes_Produccion")
         if len(data) <= 1:
-            year = datetime.now().year
+            year = datetime.now(TIMEZONE).year
             return f"ORD-{year}-001"
         
         # Obtener último ID
         rows = data[1:]
-        last_id = rows[-1][0] if rows else f"ORD-{datetime.now().year}-000"
+        last_id = rows[-1][0] if rows else f"ORD-{datetime.now(TIMEZONE).year}-000"
         
         # Extraer número y sumar 1
         parts = last_id.split("-")
@@ -37,7 +41,7 @@ def _generar_orden_id():
     
     except Exception as e:
         print(f"⚠️ Error generando Orden_ID: {e}")
-        year = datetime.now().year
+        year = datetime.now(TIMEZONE).year
         return f"ORD-{year}-001"
 
 
@@ -96,7 +100,7 @@ def generar_orden(formula_key, gal_objetivo, ped_id=None, batch_id=None, observa
             "orden_id": orden_id,
             "formula_key": formula_key,
             "gal_objetivo": gal_objetivo,
-            "fecha_generacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "fecha_generacion": datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S"),
             "ped_id": ped_id or "",
             "batch_id": batch_id or "",
             "observaciones": observaciones or ""

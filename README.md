@@ -126,6 +126,12 @@ El directorio `tests_orden_pdf/` incluye comparaciones visuales del layout PDF; 
 
 ---
 
+## Despliegue
+- 🛰️ **Streamlit Cloud**: instancia oficial publicada el 17 de diciembre de 2025. Actualiza `st.secrets` con las credenciales y el `.env` remoto antes de hacer deploy.
+- 🖥️ **Local**: `streamlit run app.py` siguiendo la sección de configuración rápida.
+
+---
+
 ## Soporte
 - 💬 Equipo interno: `st.sidebar` muestra correos y versiones.
 - 📧 Contacto principal: [gilerojas@gmail.com](mailto:gilerojas@gmail.com)
