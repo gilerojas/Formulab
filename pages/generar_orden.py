@@ -40,7 +40,7 @@ TIPOS_FORMULAS = {
     "BEP": "Barniz Port Epoxi Clear",
     "DRY": "Dry Wet",
     "ECO": "Económica",
-    "EPO": "Epóxica",
+    "EPO": "Epoxica",
     "EIN": "Esmalte Industrial",
     "EANT": "Esmalte Anticorrosivo",
     "EMAN": "Esmalte Mantenimiento",
