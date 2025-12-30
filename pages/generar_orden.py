@@ -300,17 +300,17 @@ st.markdown("### 2️⃣ Galones a Producir")
 
 # Inicializar valor en session_state si no existe
 if "gal_objetivo" not in st.session_state:
-    st.session_state["gal_objetivo"] = 25
+    st.session_state["gal_objetivo"] = 25.0
 
 col1, col2 = st.columns([3, 1])
 
 with col1:
     galones_slider = st.slider(
         "Desliza para seleccionar galones:",
-        min_value=1,
-        max_value=500,
+        min_value=0.20,
+        max_value=500.0,
         value=st.session_state["gal_objetivo"],
-        step=1,
+        step=0.25,
         key="gal_slider",
         on_change=lambda: st.session_state.update(
             {"gal_objetivo": st.session_state["gal_slider"]}
@@ -320,9 +320,10 @@ with col1:
 with col2:
     galones_input = st.number_input(
         "O escribe:",
-        min_value=1,
-        max_value=500,
+        min_value=0.20,
+        max_value=500.0,
         value=st.session_state["gal_objetivo"],
+        step=0.25,
         key="gal_input",
         on_change=lambda: st.session_state.update(
             {"gal_objetivo": st.session_state["gal_input"]}
