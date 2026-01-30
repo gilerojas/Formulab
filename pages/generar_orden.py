@@ -501,7 +501,11 @@ with col1:
                 # 1. Generar Orden ID único
                 orden_id = f"ORD-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
 
-                # 2. Generar PDF
+                # 2. Generar PDF (guardar en ORDENES/ si existe la carpeta)
+                import os
+                ordenes_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ORDENES")
+                os.makedirs(ordenes_dir, exist_ok=True)
+                output_pdf = os.path.join(ordenes_dir, f"{orden_id}.pdf")
                 with st.spinner("📄 Generando PDF..."):
                     pdf_path = generar_pdf_orden(
                         orden_id=orden_id,
@@ -511,6 +515,7 @@ with col1:
                         ped_id=ped_id,
                         batch_id=batch_id,
                         observaciones=observaciones,
+                        output_path=output_pdf,
                     )
 
                 # 3. Guardar en Sheets

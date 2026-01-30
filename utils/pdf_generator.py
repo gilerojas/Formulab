@@ -30,14 +30,15 @@ COLOR_GRIS_MEDIO = colors.HexColor("#6E6E6E")
 COLOR_GRIS_CLARO = colors.HexColor("#F0F0F0")
 COLOR_FONDO = colors.HexColor("#F6F6F6")
 
-# 📐 Constantes de layout para "una hoja" (letter = 8.5" x 11")
+# 📐 Constantes de layout para "una hoja" (letter = 8.5" x 11") - aprovechar al máximo
 PAGE_HEIGHT_INCH = letter[1] / 72.0  # 11"
-MARGIN_TOP_BOTTOM_INCH = 0.5 + 0.5
-# Altura aproximada de bloques fijos (header, info, subtitle, firma, footer)
-FIXED_BLOCKS_INCH = 2.4
+MARGIN_INCH = 0.4  # márgenes reducidos para más espacio útil
+MARGIN_TOP_BOTTOM_INCH = MARGIN_INCH * 2
+# Bloques fijos compactos (header, info, subtitle, firma, footer)
+FIXED_BLOCKS_INCH = 1.9
 AVAILABLE_TABLE_INCH = PAGE_HEIGHT_INCH - MARGIN_TOP_BOTTOM_INCH - FIXED_BLOCKS_INCH
 AVAILABLE_TABLE_PT = AVAILABLE_TABLE_INCH * 72
-FONT_MIN, FONT_MAX = 5, 11  # rango de fuente para items (legibilidad)
+FONT_MIN, FONT_MAX = 5, 13  # rango amplio: más legible con pocos items
 
 
 def _compute_table_layout(n_rows: int):
@@ -102,10 +103,10 @@ def generar_pdf_orden(
     doc = SimpleDocTemplate(
         output_path,
         pagesize=letter,
-        rightMargin=0.5*inch,
-        leftMargin=0.5*inch,
-        topMargin=0.5*inch,
-        bottomMargin=0.5*inch
+        rightMargin=MARGIN_INCH*inch,
+        leftMargin=MARGIN_INCH*inch,
+        topMargin=MARGIN_INCH*inch,
+        bottomMargin=MARGIN_INCH*inch,
     )
     
     elements = []
@@ -114,21 +115,21 @@ def generar_pdf_orden(
     style_title = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=14,
+        fontSize=12,
         textColor=COLOR_COBRE,
-        spaceAfter=3,
+        spaceAfter=1,
         alignment=TA_LEFT,
-        fontName='Helvetica-Bold'
+        fontName='Helvetica-Bold',
     )
     
     style_subtitle = ParagraphStyle(
         'CustomSubtitle',
         parent=styles['Heading2'],
-        fontSize=9,
+        fontSize=8,
         textColor=COLOR_GRIS_OSCURO,
-        spaceAfter=4,
+        spaceAfter=2,
         alignment=TA_LEFT,
-        fontName='Helvetica-Bold'
+        fontName='Helvetica-Bold',
     )
     
     style_normal = ParagraphStyle(
@@ -151,7 +152,7 @@ def generar_pdf_orden(
         ('TOPPADDING', (0,0), (-1,-1), 0)
     ]))
     elements.append(t_header)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 4))
     
     # ===== INFORMACIÓN GENERAL (DISEÑO APROBADO) =====
     
@@ -186,11 +187,11 @@ def generar_pdf_orden(
     style_g_num = ParagraphStyle(
         'galones_number', 
         parent=styles['Normal'], 
-        fontSize=42,  # ✨ GRANDE
+        fontSize=32,
         textColor=COLOR_GRIS_OSCURO, 
         alignment=TA_CENTER, 
         fontName='Helvetica-Bold', 
-        leading=42
+        leading=32,
     )
     
     style_g_unit = ParagraphStyle(
@@ -263,15 +264,15 @@ def generar_pdf_orden(
         ('ALIGN', (2,0), (2,5), 'CENTER'), 
         ('VALIGN', (2,0), (2,5), 'MIDDLE'), 
         
-        # --- ESTÉTICA ---
-        ('LINEBEFORE', (2,0), (2,5), 1, COLOR_GRIS_CLARO),  # Borde separador
-        ('LEFTPADDING', (2,0), (2,5), 20),  # Padding interno del bloque
-        ('TOPPADDING', (0,0), (-1,-1), 2),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        # --- ESTÉTICA (compacto) ---
+        ('LINEBEFORE', (2,0), (2,5), 1, COLOR_GRIS_CLARO),
+        ('LEFTPADDING', (2,0), (2,5), 12),
+        ('TOPPADDING', (0,0), (-1,-1), 1),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 1),
     ]))
     
     elements.append(info_table)
-    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Spacer(1, 0.04*inch))
     
     # ===== TABLA DE INGREDIENTES (toda la fórmula en una hoja, sin truncar) =====
     elements.append(Paragraph("<b>INGREDIENTES A PESAR</b>", style_subtitle))
@@ -396,32 +397,32 @@ def generar_pdf_orden(
     ingredients_table.setStyle(TableStyle(base_styles + etapa_styles + ingredient_styles))
     
     elements.append(ingredients_table)
-    elements.append(Spacer(1, 0.03*inch))
+    elements.append(Spacer(1, 0.02*inch))
     
-    # ===== OBSERVACIONES (ultra-compactas) =====
+    # ===== OBSERVACIONES =====
     if observaciones:
         if len(observaciones) > 100:
             observaciones = observaciones[:97] + "..."
         elements.append(Paragraph(f"<b>Obs:</b> {observaciones}", style_normal))
-        elements.append(Spacer(1, 0.02*inch))
+        elements.append(Spacer(1, 0.01*inch))
     
-    # ===== FIRMA (ULTRA-COMPACTA CON ALTURA FIJA) =====
+    # ===== FIRMA (compacta) =====
     firma_data = [["Operario: ___________________", "Fecha: ___________________"]]
     firma_table = Table(
         firma_data, 
         colWidths=[3.75*inch, 3.75*inch],
-        rowHeights=[0.25*inch]
+        rowHeights=[0.2*inch],
     )
     firma_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('FONTSIZE', (0, 0), (-1, -1), 6),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
     
     elements.append(firma_table)
-    elements.append(Spacer(1, 0.02*inch))
+    elements.append(Spacer(1, 0.01*inch))
     
     # ===== FOOTER =====
     fecha_gen = datetime.now().strftime("%Y-%m-%d %H:%M")
