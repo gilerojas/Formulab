@@ -1,12 +1,13 @@
 """
 PDF Generator para Órdenes de Producción - GREQ
 ------------------------------------------------
-Versión: 3.0 (Layout inteligente – toda la fórmula en una hoja)
-Cambios en v3.0:
-- ✅ Sin truncado: todos los ingredientes siempre en una sola hoja
-- ✅ Escalado inteligente: tamaño de fuente y padding según cantidad de items
-- ✅ Más legible con pocos items (fuente grande); compacto con muchos
-- ✅ Altura disponible calculada a partir de márgenes y bloques fijos
+Versión: 3.1 (Sistema unificado – expandir/contraer todo junto)
+Cambios en v3.1:
+- ✅ Un solo factor (block_scale): header, info, tabla, spacers y firma escalan juntos
+- ✅ Padding mínimo en celdas (4 pt) para que el texto no solape los bordes
+- ✅ Número "Total a producir" fijo en 42 pt (no se reduce)
+- ✅ Marca, Tipo y Color con estilo más grande (value_bold, escala con s)
+- ✅ Referencia 22 filas: más items → todo más compacto; menos items → todo más amplio
 
 Autor: Gilberto Rojas
 Empresa: GR Especialidades Químicas
@@ -38,37 +39,58 @@ MARGIN_TOP_BOTTOM_INCH = MARGIN_INCH * 2
 FIXED_BLOCKS_INCH = 1.9
 AVAILABLE_TABLE_INCH = PAGE_HEIGHT_INCH - MARGIN_TOP_BOTTOM_INCH - FIXED_BLOCKS_INCH
 AVAILABLE_TABLE_PT = AVAILABLE_TABLE_INCH * 72
-FONT_MIN, FONT_MAX = 5, 13  # rango amplio: más legible con pocos items
+FONT_MIN, FONT_MAX = 5, 12
+# Padding mínimo en celdas para que el texto no solape los bordes
+PAD_CELL_MIN_PT = 4
+# Referencia de filas para el factor de escala (arriba de esto = contraer, abajo = expandir)
+REF_ROWS = 22
+BLOCK_SCALE_MIN, BLOCK_SCALE_MAX = 0.72, 1.15
+
+
+def _count_table_rows(df_escalado) -> int:
+    """Cuenta filas totales de la tabla: cabecera + etapas + ingredientes + total."""
+    n = 1  # cabecera
+    etapa_actual = None
+    for _, row in df_escalado.iterrows():
+        etapa = row.get("etapa", row.get("Etapa", "—"))
+        if etapa != etapa_actual:
+            n += 1
+            etapa_actual = etapa
+        n += 1
+    return n + 1  # + fila TOTAL
 
 
 def _compute_table_layout(n_rows: int):
     """
-    Calcula tamaño de fuente y padding para la tabla de ingredientes
-    de forma que quepa en una sola hoja y sea lo más legible posible.
-
-    n_rows: número total de filas de la tabla (cabecera + datos + fila total).
-    Returns: dict con fontSize_header, fontSize_codigo, fontSize_nombre, fontSize_nums, padding_pt
+    Calcula fuente y padding de la tabla de ingredientes para una hoja.
+    Padding mínimo PAD_CELL_MIN_PT para que el texto no toque los bordes.
     """
     if n_rows <= 0:
         n_rows = 1
     height_per_row_pt = AVAILABLE_TABLE_PT / n_rows
-    # Altura de una fila ≈ leading + 2*padding. leading ≈ fontSize * 1.2
-    # Queremos fontSize*1.2 + 2*padding <= height_per_row_pt
-    padding_pt = 1
-    # fontSize máximo que cabe en esta fila
-    font_calc = (height_per_row_pt - 2 * padding_pt) / 1.2
+    # Padding: mínimo 4 pt para que no solape; máximo ~30% de la fila
+    pad = max(PAD_CELL_MIN_PT, int(height_per_row_pt * 0.15))
+    pad = min(pad, max(PAD_CELL_MIN_PT, int(height_per_row_pt * 0.35)))
+    # Fuente: lo que quepa con ese padding (leading ≈ 1.2 * fontSize)
+    font_calc = (height_per_row_pt - 2 * pad) / 1.2
     font_clamped = max(FONT_MIN, min(FONT_MAX, int(math.floor(font_calc))))
-    if font_clamped <= 6:
-        padding_pt = 0
-        font_clamped = max(FONT_MIN, min(FONT_MAX, int((height_per_row_pt - 2) / 1.2)))
+    if font_clamped < FONT_MIN and pad > PAD_CELL_MIN_PT:
+        pad = max(PAD_CELL_MIN_PT, int((height_per_row_pt - FONT_MIN * 1.2) / 2))
+        font_clamped = FONT_MIN
     return {
         "fontSize_header": font_clamped,
         "fontSize_codigo": max(FONT_MIN, font_clamped - 1),
         "fontSize_nombre": font_clamped,
         "fontSize_nums": min(FONT_MAX, font_clamped + 1),
         "fontSize_etapa": font_clamped,
-        "padding_pt": max(0, padding_pt),
+        "padding_pt": max(PAD_CELL_MIN_PT, pad),
     }
+
+
+def _compute_block_scale(n_rows: int) -> float:
+    """Factor único: todo el bloque (header, info, spacers) se expande o contrae junto."""
+    scale = REF_ROWS / max(1, n_rows)
+    return max(BLOCK_SCALE_MIN, min(BLOCK_SCALE_MAX, scale))
 
 def generar_pdf_orden(
     orden_id: str,
@@ -100,6 +122,13 @@ def generar_pdf_orden(
     if not output_path:
         output_path = f"/tmp/orden_{orden_id}.pdf"
     
+    # ----- Sistema unificado: precalcular n_rows y escalas -----
+    n_table_rows = _count_table_rows(df_escalado)
+    layout = _compute_table_layout(n_table_rows)
+    block_scale = _compute_block_scale(n_table_rows)
+    # Escala aplicada a todo el bloque superior (header, info, spacers, firma)
+    s = block_scale
+    
     doc = SimpleDocTemplate(
         output_path,
         pagesize=letter,
@@ -112,12 +141,13 @@ def generar_pdf_orden(
     elements = []
     styles = getSampleStyleSheet()
     
+    # Estilos que escalan con block_scale (todo se expande o contrae junto)
     style_title = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=12,
+        fontSize=max(8, int(12 * s)),
         textColor=COLOR_COBRE,
-        spaceAfter=1,
+        spaceAfter=max(1, int(3 * s)),
         alignment=TA_LEFT,
         fontName='Helvetica-Bold',
     )
@@ -125,9 +155,9 @@ def generar_pdf_orden(
     style_subtitle = ParagraphStyle(
         'CustomSubtitle',
         parent=styles['Heading2'],
-        fontSize=8,
+        fontSize=max(6, int(9 * s)),
         textColor=COLOR_GRIS_OSCURO,
-        spaceAfter=2,
+        spaceAfter=max(1, int(3 * s)),
         alignment=TA_LEFT,
         fontName='Helvetica-Bold',
     )
@@ -135,144 +165,131 @@ def generar_pdf_orden(
     style_normal = ParagraphStyle(
         'CustomNormal',
         parent=styles['Normal'],
-        fontSize=7,
+        fontSize=max(5, int(7 * s)),
         spaceAfter=2,
-        textColor=COLOR_GRIS_OSCURO
+        textColor=COLOR_GRIS_OSCURO,
     )
     
-    # ===== HEADER COMPACTO =====
-    header_data = [
-        [Paragraph("ORDEN DE PRODUCCIÓN", style_title)],
-        [Paragraph(f"ID: {orden_id}", ParagraphStyle('h2', parent=styles['Normal'], fontSize=9, textColor=COLOR_GRIS_OSCURO, alignment=TA_LEFT))]
-    ]
-    t_header = Table(header_data, colWidths=[7.5*inch])
-    t_header.setStyle(TableStyle([
-        ('LEFTPADDING', (0,0), (-1,-1), 0), 
-        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ('TOPPADDING', (0,0), (-1,-1), 0)
-    ]))
-    elements.append(t_header)
-    elements.append(Spacer(1, 4))
-    
-    # ===== INFORMACIÓN GENERAL (DISEÑO APROBADO) =====
-    
-    # Estilos para labels y values
     style_label = ParagraphStyle(
-        'label', 
-        parent=styles['Normal'], 
-        fontSize=7, 
-        textColor=COLOR_COBRE, 
-        fontName='Helvetica-Bold', 
-        leading=8
+        'label',
+        parent=styles['Normal'],
+        fontSize=max(6, int(7 * s)),
+        textColor=COLOR_COBRE,
+        fontName='Helvetica-Bold',
+        leading=max(7, int(9 * s)),
     )
     
     style_value = ParagraphStyle(
-        'value', 
-        parent=styles['Normal'], 
-        fontSize=7, 
-        textColor=COLOR_GRIS_OSCURO, 
-        leading=8
+        'value',
+        parent=styles['Normal'],
+        fontSize=max(6, int(7 * s)),
+        textColor=COLOR_GRIS_OSCURO,
+        leading=max(7, int(9 * s)),
     )
     
-    # 🎯 Estilos para el bloque de GALONES (derecha)
+    # Marca, Tipo, Color: más grandes y en negrita (escalan con s)
+    style_value_bold = ParagraphStyle(
+        'value_bold',
+        parent=styles['Normal'],
+        fontSize=max(8, int(11 * s)),
+        textColor=COLOR_GRIS_OSCURO,
+        fontName='Helvetica-Bold',
+        leading=max(9, int(13 * s)),
+    )
+    
+    # Galones: número grande FIJO (no se reduce)
     style_g_title = ParagraphStyle(
-        'galones_title', 
-        parent=styles['Normal'], 
-        fontSize=8, 
-        textColor=COLOR_GRIS_OSCURO, 
-        alignment=TA_CENTER, 
-        fontName='Helvetica'
+        'galones_title',
+        parent=styles['Normal'],
+        fontSize=max(7, int(9 * s)),
+        textColor=COLOR_GRIS_OSCURO,
+        alignment=TA_CENTER,
+        fontName='Helvetica',
     )
     
     style_g_num = ParagraphStyle(
-        'galones_number', 
-        parent=styles['Normal'], 
-        fontSize=32,
-        textColor=COLOR_GRIS_OSCURO, 
-        alignment=TA_CENTER, 
-        fontName='Helvetica-Bold', 
-        leading=32,
+        'galones_number',
+        parent=styles['Normal'],
+        fontSize=42,
+        textColor=COLOR_GRIS_OSCURO,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold',
+        leading=42,
     )
     
     style_g_unit = ParagraphStyle(
-        'galones_unit', 
-        parent=styles['Normal'], 
-        fontSize=10, 
-        textColor=COLOR_COBRE, 
-        alignment=TA_CENTER, 
-        fontName='Helvetica-Bold'
+        'galones_unit',
+        parent=styles['Normal'],
+        fontSize=max(9, int(11 * s)),
+        textColor=COLOR_COBRE,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold',
     )
     
-    # 🎯 Contenido del bloque de galones (3 líneas)
     content_galones = [
         Paragraph("TOTAL A PRODUCIR", style_g_title),
         Paragraph(str(int(galones_objetivo)), style_g_num),
-        Paragraph("GALONES", style_g_unit)
+        Paragraph("GALONES", style_g_unit),
     ]
     
-    # 📋 Datos de la tabla (6 filas - MARCA, TIPO, COLOR en negrita)
+    # Tabla info: Fórmula/otros con style_value; Marca, Tipo, Color con style_value_bold
     info_data = [
-        # Fila 0: Span inicia aquí
         [
-            Paragraph("Fórmula:", style_label), 
-            Paragraph(formula_info.get("Formula_Key", "N/A"), style_value), 
-            content_galones
+            Paragraph("Fórmula:", style_label),
+            Paragraph(formula_info.get("Formula_Key", "N/A"), style_value),
+            content_galones,
         ],
-        # Fila 1
         [
-            Paragraph("Marca:", style_label),   
-            Paragraph(f"<b>{formula_info.get('Marca', 'N/A')}</b>", style_value), 
-            ''
+            Paragraph("Marca:", style_label),
+            Paragraph(formula_info.get("Marca", "N/A") or "N/A", style_value_bold),
+            "",
         ],
-        # Fila 2
         [
-            Paragraph("Tipo:", style_label),    
-            Paragraph(f"<b>{formula_info.get('Tipo', 'N/A')}</b>", style_value), 
-            ''
+            Paragraph("Tipo:", style_label),
+            Paragraph(formula_info.get("Tipo", "N/A") or "N/A", style_value_bold),
+            "",
         ],
-        # Fila 3
         [
-            Paragraph("Color:", style_label),   
-            Paragraph(f"<b>{formula_info.get('Color', 'N/A')}</b>", style_value), 
-            ''
+            Paragraph("Color:", style_label),
+            Paragraph(formula_info.get("Color", "N/A") or "N/A", style_value_bold),
+            "",
         ],
-        # Fila 4
         [
-            Paragraph("Batch:", style_label),   
-            Paragraph(batch_id or "—", style_value), 
-            ''
+            Paragraph("Batch:", style_label),
+            Paragraph(batch_id or "—", style_value),
+            "",
         ],
-        # Fila 5
         [
-            Paragraph("PED:", style_label),     
-            Paragraph(ped_id or "—", style_value), 
-            ''
-        ]
+            Paragraph("PED:", style_label),
+            Paragraph(ped_id or "—", style_value),
+            "",
+        ],
     ]
     
-    # 📐 Dimensiones: Col 0 (Labels) | Col 1 (Values) | Col 2 (Galones)
+    pad_info = max(1, int(3 * s))
     info_table = Table(info_data, colWidths=[0.8*inch, 4.2*inch, 2.5*inch])
-    
     info_table.setStyle(TableStyle([
-        # --- ALINEACIÓN GENERAL ---
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
         ('RIGHTPADDING', (0,0), (-1,-1), 0),
-        
-        # --- 🎯 FUSIÓN (SPAN) - Galones ocupa 6 filas ---
-        ('SPAN', (2,0), (2,5)),  # Columna 2, desde fila 0 hasta fila 5
-        ('ALIGN', (2,0), (2,5), 'CENTER'), 
-        ('VALIGN', (2,0), (2,5), 'MIDDLE'), 
-        
-        # --- ESTÉTICA (compacto) ---
+        ('SPAN', (2,0), (2,5)),
+        ('ALIGN', (2,0), (2,5), 'CENTER'),
+        ('VALIGN', (2,0), (2,5), 'MIDDLE'),
         ('LINEBEFORE', (2,0), (2,5), 1, COLOR_GRIS_CLARO),
-        ('LEFTPADDING', (2,0), (2,5), 12),
-        ('TOPPADDING', (0,0), (-1,-1), 1),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ('LEFTPADDING', (2,0), (2,5), max(8, int(14 * s))),
+        ('TOPPADDING', (0,0), (-1,-1), pad_info),
+        ('BOTTOMPADDING', (0,0), (-1,-1), pad_info),
     ]))
     
+    elements.append(Paragraph("ORDEN DE PRODUCCIÓN", style_title))
+    elements.append(Paragraph(
+        f"ID: {orden_id}",
+        ParagraphStyle('h2', parent=styles['Normal'], fontSize=max(7, int(9 * s)), textColor=COLOR_GRIS_OSCURO, alignment=TA_LEFT),
+    ))
+    elements.append(Spacer(1, max(2, int(6 * s))))
+    
     elements.append(info_table)
-    elements.append(Spacer(1, 0.04*inch))
+    elements.append(Spacer(1, 0.04 * s * inch))
     
     # ===== TABLA DE INGREDIENTES (toda la fórmula en una hoja, sin truncar) =====
     elements.append(Paragraph("<b>INGREDIENTES A PESAR</b>", style_subtitle))
@@ -300,9 +317,7 @@ def generar_pdf_orden(
     total_gl = df_escalado["GL_PRO"].sum()
     table_data.append(["", "TOTAL", f"{total_kg:.2f}", f"{total_gl:.2f}"])
     
-    # Escalado inteligente: fuente y padding según número de filas
-    n_rows = len(table_data)
-    layout = _compute_table_layout(n_rows)
+    # Usar layout ya calculado al inicio (n_table_rows == len(table_data))
     fs_h = layout["fontSize_header"]
     fs_c = layout["fontSize_codigo"]
     fs_n = layout["fontSize_nombre"]
@@ -397,38 +412,41 @@ def generar_pdf_orden(
     ingredients_table.setStyle(TableStyle(base_styles + etapa_styles + ingredient_styles))
     
     elements.append(ingredients_table)
-    elements.append(Spacer(1, 0.02*inch))
+    elements.append(Spacer(1, 0.02 * s * inch))
     
     # ===== OBSERVACIONES =====
     if observaciones:
         if len(observaciones) > 100:
             observaciones = observaciones[:97] + "..."
         elements.append(Paragraph(f"<b>Obs:</b> {observaciones}", style_normal))
-        elements.append(Spacer(1, 0.01*inch))
+        elements.append(Spacer(1, 0.01 * s * inch))
     
-    # ===== FIRMA (compacta) =====
+    # ===== FIRMA (escala con s) =====
+    firma_fs = max(5, int(7 * s))
+    firma_h = max(0.15, 0.22 * s) * inch
     firma_data = [["Operario: ___________________", "Fecha: ___________________"]]
     firma_table = Table(
-        firma_data, 
+        firma_data,
         colWidths=[3.75*inch, 3.75*inch],
-        rowHeights=[0.2*inch],
+        rowHeights=[firma_h],
     )
     firma_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, -1), firma_fs),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
     
     elements.append(firma_table)
-    elements.append(Spacer(1, 0.01*inch))
+    elements.append(Spacer(1, 0.01 * s * inch))
     
-    # ===== FOOTER =====
+    # ===== FOOTER (escala con s) =====
     fecha_gen = datetime.now().strftime("%Y-%m-%d %H:%M")
+    footer_fs = max(5, int(6 * s))
     footer = Paragraph(
         f"<i>Generado: {fecha_gen} | Sistema Formulab v1.0 | GREQ</i>",
-        ParagraphStyle('Footer', parent=styles['Normal'], fontSize=6, textColor=COLOR_GRIS_MEDIO, alignment=TA_CENTER)
+        ParagraphStyle('Footer', parent=styles['Normal'], fontSize=footer_fs, textColor=COLOR_GRIS_MEDIO, alignment=TA_CENTER),
     )
     elements.append(footer)
     
