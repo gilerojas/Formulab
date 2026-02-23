@@ -87,6 +87,14 @@ def _compute_table_layout(n_rows: int):
     }
 
 
+def _format_galones_display(galones: float) -> str:
+    """Formato legible para el bloque 'Total a producir': enteros sin decimales, muestras con decimales."""
+    if galones >= 100 or (galones >= 1 and galones == round(galones, 0)):
+        return str(int(round(galones, 0)))
+    # Muestras de laboratorio o valores con decimales: mostrar hasta 2 decimales, sin ceros finales
+    return f"{galones:.2f}".rstrip("0").rstrip(".")
+
+
 def _compute_block_scale(n_rows: int) -> float:
     """Factor único: todo el bloque (header, info, spacers) se expande o contrae junto."""
     scale = REF_ROWS / max(1, n_rows)
@@ -228,7 +236,7 @@ def generar_pdf_orden(
     
     content_galones = [
         Paragraph("TOTAL A PRODUCIR", style_g_title),
-        Paragraph(str(int(galones_objetivo)), style_g_num),
+        Paragraph(_format_galones_display(galones_objetivo), style_g_num),
         Paragraph("GALONES", style_g_unit),
     ]
     
