@@ -154,12 +154,11 @@ if not df.empty:
                     st.switch_page("pages/generar_orden.py")
             with col_btn2:
                 if st.button(
-                    "✏️ Editar",
+                    "✏️ Actualizar",
                     key=f"btn_editar_{formula_key}",
                     use_container_width=True
                 ):
-                    st.session_state["editar_formula_key"] = formula_key
-                    st.switch_page("pages/editar_formula.py")
+                    st.switch_page("pages/nueva_formula.py")
             with col_btn3:
                 if st.button(
                     "📄 Ver PDF",

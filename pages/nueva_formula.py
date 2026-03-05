@@ -100,11 +100,21 @@ def _style_diff(df):
         return [""] * len(row)
     return df.style.apply(color_row, axis=1)
 
+
+@st.cache_data(ttl=300)
+def _cached_buscar_formula(formula_key):
+    return buscar_formula(formula_key)
+
+
+@st.cache_data(ttl=300)
+def _cached_obtener_ingredientes(formula_key):
+    return obtener_ingredientes_formula(formula_key)
+
 apply_custom_css()
 
 render_header(
-    title="Nueva Fórmula",
-    subtitle="Selecciona tipo y pega el texto de la fórmula para validarla",
+    title="Nueva / Actualizar Fórmula",
+    subtitle="Pega el texto desde Excel para crear o actualizar una fórmula existente",
     emoji="📝"
 )
 
@@ -338,14 +348,14 @@ if "validated_result" in st.session_state:
 
         # ===== VERIFICAR DUPLICADOS =====
         formula_key = result["formula_key"]
-        existe = buscar_formula(formula_key)
+        existe = _cached_buscar_formula(formula_key)
         existe_real = existe is not None and bool(existe)
 
         if existe_real:
             st.warning(f"⚠️ La fórmula **{formula_key}** ya existe en el catálogo")
 
             # ===== DIFF: comparar ingredientes actuales vs nuevos =====
-            df_old_ing = obtener_ingredientes_formula(formula_key)
+            df_old_ing = _cached_obtener_ingredientes(formula_key)
             if not df_old_ing.empty:
                 st.markdown("#### Comparativo de cambios")
 

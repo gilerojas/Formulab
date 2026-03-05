@@ -206,9 +206,8 @@ def actualizar_formula(formula_key, formula_meta, df_ingredientes, observaciones
     
     indices = find_row_indices_by_value("Formulas_Detalle", 0, formula_key)
     if indices:
-        # Delete from bottom to top so row shifts don't affect earlier indices
-        for row_idx in sorted(indices, reverse=True):
-            delete_rows("Formulas_Detalle", row_idx, row_idx)
+        # Single batch delete — rows are always contiguous (append-only sheet)
+        delete_rows("Formulas_Detalle", min(indices), max(indices))
     
     detalle_rows = []
     for idx, row in df_ingredientes.iterrows():
