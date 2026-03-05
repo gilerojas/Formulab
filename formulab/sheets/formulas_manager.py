@@ -6,7 +6,7 @@ Gestiona el CRUD de fórmulas en Google Sheets.
 
 import pandas as pd
 from datetime import datetime
-from .sheets_connector import get_worksheet, append_sheet, read_sheet
+from .sheets_connector import get_worksheet, append_sheet, read_sheet, find_row_index_by_value, find_row_indices_by_value, update_row, delete_rows
 
 
 def guardar_formula(result, observaciones=""):
@@ -155,6 +155,81 @@ def buscar_formula(formula_key):
         import traceback
         traceback.print_exc()
         return None
+
+
+def actualizar_formula(formula_key, formula_meta, df_ingredientes, observaciones=None):
+    """
+    Actualiza una fórmula existente en Google Sheets (metadata + ingredientes).
+    
+    Args:
+        formula_key (str): Formula_Key a actualizar (debe existir)
+        formula_meta (dict): Metadatos con claves Marca, Tipo, Color, Volumen_Base,
+                            PG_Pintura, Estatus. Opcional: Observaciones.
+        df_ingredientes (pd.DataFrame): DataFrame de ingredientes con columnas
+            Formula_Key, Linea, Codigo, Nombre, Cantidad, Unidad, Densidad_KG_GL, Etapa.
+        observaciones (str): Si se pasa, sobrescribe formula_meta.get("Observaciones").
+    
+    Returns:
+        tuple: (formula_key, success)
+    """
+    existing = buscar_formula(formula_key)
+    if not existing:
+        print(f"⚠️ La fórmula '{formula_key}' no existe. Usa guardar_formula para crear.")
+        return formula_key, False
+    
+    obs = observaciones if observaciones is not None else formula_meta.get("Observaciones", "")
+    total_ing = len(df_ingredientes)
+    
+    formula_row = [
+        formula_key,
+        formula_meta.get("Marca", existing.get("Marca", "N/A")),
+        formula_meta.get("Tipo", existing.get("Tipo", "N/A")),
+        formula_meta.get("Color", existing.get("Color", "N/A")),
+        float(formula_meta.get("Volumen_Base", existing.get("Volumen_Base", 100))),
+        float(formula_meta.get("PG_Pintura", existing.get("PG_Pintura", 0))),
+        total_ing,
+        existing.get("Fecha_Creacion", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        obs,
+        formula_meta.get("Estatus", existing.get("Estatus", "ACTIVA")),
+    ]
+    
+    row_idx = find_row_index_by_value("GREQ_Formulas", formula_key)
+    if not row_idx:
+        print(f"❌ No se encontró fila para {formula_key} en GREQ_Formulas")
+        return formula_key, False
+    
+    try:
+        update_row("GREQ_Formulas", row_idx, [formula_row])
+    except Exception as e:
+        print(f"❌ Error actualizando GREQ_Formulas: {e}")
+        return formula_key, False
+    
+    indices = find_row_indices_by_value("Formulas_Detalle", 0, formula_key)
+    if indices:
+        # Delete from bottom to top so row shifts don't affect earlier indices
+        for row_idx in sorted(indices, reverse=True):
+            delete_rows("Formulas_Detalle", row_idx, row_idx)
+    
+    detalle_rows = []
+    for idx, row in df_ingredientes.iterrows():
+        codigo = str(row.get("Codigo", row.get("CODIGO", ""))).strip() if pd.notna(row.get("Codigo", row.get("CODIGO"))) else ""
+        nombre = str(row.get("Nombre", row.get("nombre", ""))).strip() if pd.notna(row.get("Nombre", row.get("nombre"))) else ""
+        cant = float(row.get("Cantidad", row.get("CANT", 0))) if pd.notna(row.get("Cantidad", row.get("CANT"))) else 0.0
+        unidad = str(row.get("Unidad", "KG")).strip() if pd.notna(row.get("Unidad")) else "KG"
+        densidad = float(row.get("Densidad_KG_GL", 0)) if pd.notna(row.get("Densidad_KG_GL")) else 0.0
+        etapa = str(row.get("Etapa", "Mezcla")).strip() if pd.notna(row.get("Etapa")) else "Mezcla"
+        linea = int(row.get("Linea", idx + 1)) if pd.notna(row.get("Linea")) else int(idx) + 1
+        detalle_rows.append([formula_key, linea, codigo, nombre, cant, unidad, densidad, etapa])
+    
+    if detalle_rows:
+        try:
+            append_sheet("Formulas_Detalle", detalle_rows)
+        except Exception as e:
+            print(f"❌ Error actualizando Formulas_Detalle: {e}")
+            return formula_key, False
+    
+    print(f"✅ Fórmula '{formula_key}' actualizada ({total_ing} ingredientes)")
+    return formula_key, True
 
 
 def listar_formulas(marca=None, tipo=None, estatus="ACTIVA"):

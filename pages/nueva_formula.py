@@ -10,8 +10,95 @@ from components.cards import AlertCard
 from formulab.formulab_api import procesar_formula
 
 # Importar managers
-from formulab.sheets.formulas_manager import guardar_formula, buscar_formula
+from formulab.sheets.formulas_manager import guardar_formula, buscar_formula, actualizar_formula, obtener_ingredientes_formula
 from formulab.sheets.tipo_mapeo_manager import obtener_lista_tipos, get_tipo_tag_directo
+
+
+def _build_diff_table(df_old, df_new_escalado):
+    """
+    Compares old ingredients (from Formulas_Detalle) vs new (from df_escalado).
+    Returns a display DataFrame with an 'Estado' column.
+    """
+    old_map = {}
+    for _, row in df_old.iterrows():
+        key = str(row.get("Nombre", "")).strip().upper()
+        if key:
+            old_map[key] = {
+                "display": str(row.get("Nombre", "")),
+                "cant": float(row.get("Cantidad", 0)) if pd.notna(row.get("Cantidad")) else 0.0,
+            }
+
+    new_map = {}
+    for _, row in df_new_escalado.iterrows():
+        key = str(row.get("nombre", "")).strip().upper()
+        if key:
+            new_map[key] = {
+                "display": str(row.get("nombre", "")),
+                "cant": float(row.get("CANT", 0)) if pd.notna(row.get("CANT")) else 0.0,
+            }
+
+    # Preserve new order first, then append old-only keys
+    seen = set()
+    ordered_keys = []
+    for key in list(new_map.keys()) + list(old_map.keys()):
+        if key not in seen:
+            seen.add(key)
+            ordered_keys.append(key)
+
+    rows = []
+    for key in ordered_keys:
+        in_old = key in old_map
+        in_new = key in new_map
+
+        if in_old and in_new:
+            old_cant = old_map[key]["cant"]
+            new_cant = new_map[key]["cant"]
+            diff = new_cant - old_cant
+            if abs(diff) < 1e-6:
+                estado = "Sin cambio"
+                delta_str = "—"
+            else:
+                estado = "Modificado"
+                sign = "+" if diff > 0 else ""
+                delta_str = f"{sign}{diff:.2f}"
+            rows.append({
+                "Ingrediente": new_map[key]["display"],
+                "CANT Anterior": f"{old_cant:.2f}",
+                "CANT Nueva": f"{new_cant:.2f}",
+                "Delta": delta_str,
+                "Estado": estado,
+            })
+        elif in_old:
+            rows.append({
+                "Ingrediente": old_map[key]["display"],
+                "CANT Anterior": f"{old_map[key]['cant']:.2f}",
+                "CANT Nueva": "—",
+                "Delta": "—",
+                "Estado": "Removido",
+            })
+        else:
+            rows.append({
+                "Ingrediente": new_map[key]["display"],
+                "CANT Anterior": "—",
+                "CANT Nueva": f"{new_map[key]['cant']:.2f}",
+                "Delta": "—",
+                "Estado": "Nuevo",
+            })
+
+    return pd.DataFrame(rows)
+
+
+def _style_diff(df):
+    def color_row(row):
+        estado = row["Estado"]
+        if estado == "Removido":
+            return ["background-color: #ffcccc"] * len(row)
+        elif estado == "Nuevo":
+            return ["background-color: #ccf5cc"] * len(row)
+        elif estado == "Modificado":
+            return ["background-color: #fff3cd"] * len(row)
+        return [""] * len(row)
+    return df.style.apply(color_row, axis=1)
 
 apply_custom_css()
 
@@ -256,20 +343,79 @@ if "validated_result" in st.session_state:
 
         if existe_real:
             st.warning(f"⚠️ La fórmula **{formula_key}** ya existe en el catálogo")
-            
+
+            # ===== DIFF: comparar ingredientes actuales vs nuevos =====
+            df_old_ing = obtener_ingredientes_formula(formula_key)
+            if not df_old_ing.empty:
+                st.markdown("#### Comparativo de cambios")
+
+                df_diff = _build_diff_table(df_old_ing, result["df_escalado"])
+
+                n_modified = int((df_diff["Estado"] == "Modificado").sum())
+                n_added    = int((df_diff["Estado"] == "Nuevo").sum())
+                n_removed  = int((df_diff["Estado"] == "Removido").sum())
+                n_unchanged = int((df_diff["Estado"] == "Sin cambio").sum())
+
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                mc1.metric("Modificados", n_modified)
+                mc2.metric("Nuevos", n_added)
+                mc3.metric("Removidos", n_removed)
+                mc4.metric("Sin cambio", n_unchanged)
+
+                st.dataframe(
+                    _style_diff(df_diff),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Estado": st.column_config.TextColumn("Estado", width="small"),
+                        "Delta": st.column_config.TextColumn("Δ CANT", width="small"),
+                    },
+                )
+            else:
+                st.info("No se pudieron cargar los ingredientes actuales para comparar.")
+
+            st.markdown("---")
             col_ver, col_sobreescribir = st.columns(2)
-            
+
             with col_ver:
-                if st.button("👁️ Ver en Catálogo", use_container_width=True, key="btn_ver_catalogo"):
+                if st.button("Ver en Catálogo", use_container_width=True, key="btn_ver_catalogo"):
                     st.session_state["selected_formula"] = formula_key
                     st.switch_page("pages/catalogo.py")
-            
+
             with col_sobreescribir:
-                st.button(
-                    "🔄 Sobreescribir (Próximamente)",
-                    use_container_width=True,
-                    disabled=True
-                )
+                if st.button("Actualizar en catálogo", use_container_width=True, type="primary", key="btn_sobreescribir"):
+                    with st.spinner("Actualizando en Google Sheets..."):
+                        try:
+                            meta = {
+                                "Marca": result["meta"].get("marca", "N/A"),
+                                "Tipo": result["meta"].get("tipo", "N/A"),
+                                "Color": result["meta"].get("color", "N/A"),
+                                "Volumen_Base": float(result["meta"].get("gal_producir", 100)),
+                                "PG_Pintura": float(result["meta"].get("P/G", 0)),
+                                "Estatus": "ACTIVA",
+                                "Observaciones": observaciones_saved,
+                            }
+                            df_ing = result["df_escalado"].copy()
+                            if "CODIGO" in df_ing.columns and "Codigo" not in df_ing.columns:
+                                df_ing["Codigo"] = df_ing["CODIGO"]
+                            if "nombre" in df_ing.columns and "Nombre" not in df_ing.columns:
+                                df_ing["Nombre"] = df_ing["nombre"]
+                            if "CANT" in df_ing.columns and "Cantidad" not in df_ing.columns:
+                                df_ing["Cantidad"] = df_ing["CANT"]
+                            df_ing["Formula_Key"] = formula_key
+                            df_ing["Linea"] = range(1, len(df_ing) + 1)
+                            _, success = actualizar_formula(formula_key, meta, df_ing, observaciones=observaciones_saved)
+                            if success:
+                                st.success(f"Formula **{formula_key}** actualizada en el catálogo.")
+                                for k in ["validated_result", "observaciones", "debug_mode"]:
+                                    if k in st.session_state:
+                                        del st.session_state[k]
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error("No se pudo actualizar.")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
 
         else:
             # ===== BOTÓN GUARDAR =====

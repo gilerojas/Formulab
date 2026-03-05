@@ -80,6 +80,7 @@ st.sidebar.markdown("### 📑 Navegación")
 pages = {
     "🏠 Home": "pages/home",
     "📝 Nueva Fórmula": "pages/nueva_formula",
+    "✏️ Editar Fórmula": "pages/editar_formula",
     "📚 Catálogo": "pages/catalogo",
     "🏭 Generar Orden": "pages/generar_orden"
 }

@@ -143,18 +143,24 @@ if not df.empty:
                 st.error(f"❌ Error cargando ingredientes: {e}")
             
             # Botón generar orden
-            col_btn1, col_btn2 = st.columns(2)
+            col_btn1, col_btn2, col_btn3 = st.columns(3)
             with col_btn1:
                 if st.button(
                     "🏭 Generar Orden",
                     key=f"btn_orden_{formula_key}",
                     use_container_width=True
                 ):
-                    # Guardar en session_state para pasar a la página de órdenes
                     st.session_state["selected_formula"] = formula_key
                     st.switch_page("pages/generar_orden.py")
-            
             with col_btn2:
+                if st.button(
+                    "✏️ Editar",
+                    key=f"btn_editar_{formula_key}",
+                    use_container_width=True
+                ):
+                    st.session_state["editar_formula_key"] = formula_key
+                    st.switch_page("pages/editar_formula.py")
+            with col_btn3:
                 if st.button(
                     "📄 Ver PDF",
                     key=f"btn_pdf_{formula_key}",

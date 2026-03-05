@@ -98,6 +98,53 @@ def append_sheet(sheet_name, values):
     worksheet.append_rows(values)
 
 
+def find_row_index_by_value(sheet_name, column_a_value):
+    """
+    Busca el índice de la primera fila (1-based) donde la columna A coincide.
+    Returns: int or None
+    """
+    worksheet = get_worksheet(sheet_name, create_if_missing=False)
+    data = worksheet.get_all_values()
+    if not data:
+        return None
+    for i, row in enumerate(data):
+        if row and str(row[0]).strip() == str(column_a_value).strip():
+            return i + 1
+    return None
+
+
+def find_row_indices_by_value(sheet_name, column_index, value):
+    """
+    Busca todos los índices de fila (1-based) donde la columna dada coincide.
+    Returns: list of int
+    """
+    worksheet = get_worksheet(sheet_name, create_if_missing=False)
+    data = worksheet.get_all_values()
+    if not data:
+        return []
+    return [i + 1 for i, row in enumerate(data) if len(row) > column_index and str(row[column_index]).strip() == str(value).strip()]
+
+
+def update_row(sheet_name, row_index_1based, values):
+    """Actualiza una fila por índice (1-based). values: lista de valores por columna."""
+    worksheet = get_worksheet(sheet_name)
+    if not values:
+        return
+    if not isinstance(values[0], list):
+        values = [values]
+    ncols = len(values[0])
+    end_col = chr(ord("A") + ncols - 1) if ncols <= 26 else "Z"
+    range_name = f"A{row_index_1based}:{end_col}{row_index_1based}"
+    worksheet.update(range_name, values)
+
+
+def delete_rows(sheet_name, start_row_1based, end_row_1based=None):
+    """Elimina filas (1-based). Si end_row_1based es None, solo se borra start_row_1based."""
+    worksheet = get_worksheet(sheet_name)
+    end = end_row_1based if end_row_1based is not None else start_row_1based
+    worksheet.delete_rows(start_row_1based, end)
+
+
 def clear_sheet(sheet_name):
     """Limpia todo el contenido de una hoja"""
     worksheet = get_worksheet(sheet_name, create_if_missing=False)
