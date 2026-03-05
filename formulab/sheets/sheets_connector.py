@@ -170,11 +170,18 @@ def initialize_sheets():
         "Factor_Escala", "PG_Esperado", "PG_Real", "Fecha_Generacion",
         "Generado_Por", "Estado", "PED_ID", "Batch_ID",
     ]
-    
+
+    historial_headers = [
+        "Formula_Key", "Fecha_Modificacion", "Ingredientes_Antes",
+        "Ingredientes_Despues", "Modificados", "Nuevos", "Removidos",
+        "Observaciones", "Cambios_Detalle",
+    ]
+
     sheets_config = {
         "GREQ_Formulas": formulas_headers,
         "Formulas_Detalle": detalle_headers,
         "Ordenes_Produccion": ordenes_headers,
+        "Formula_Historial": historial_headers,
     }
     
     for sheet_name, headers in sheets_config.items():

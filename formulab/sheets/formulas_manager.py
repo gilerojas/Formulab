@@ -176,7 +176,10 @@ def actualizar_formula(formula_key, formula_meta, df_ingredientes, observaciones
     if not existing:
         print(f"⚠️ La fórmula '{formula_key}' no existe. Usa guardar_formula para crear.")
         return formula_key, False
-    
+
+    # Leer ingredientes actuales ANTES de borrar (para el historial)
+    df_old_ing = obtener_ingredientes_formula(formula_key)
+
     obs = observaciones if observaciones is not None else formula_meta.get("Observaciones", "")
     total_ing = len(df_ingredientes)
     
@@ -227,8 +230,89 @@ def actualizar_formula(formula_key, formula_meta, df_ingredientes, observaciones
             print(f"❌ Error actualizando Formulas_Detalle: {e}")
             return formula_key, False
     
+    # Registrar historial de cambios
+    registrar_historial(formula_key, df_old_ing, df_ingredientes, obs)
+
     print(f"✅ Fórmula '{formula_key}' actualizada ({total_ing} ingredientes)")
     return formula_key, True
+
+
+def _compute_change_detail(df_old, df_new):
+    """
+    Compara ingredientes viejos vs nuevos y devuelve:
+      - (n_modified, n_added, n_removed, detalle_str)
+    detalle_str: texto compacto para la columna Cambios_Detalle del historial.
+    """
+    old_map = {}
+    for _, row in df_old.iterrows():
+        key = str(row.get("Nombre", "")).strip().upper()
+        if key:
+            old_map[key] = {
+                "display": str(row.get("Nombre", "")),
+                "cant": float(row.get("Cantidad", 0)) if pd.notna(row.get("Cantidad")) else 0.0,
+            }
+
+    new_map = {}
+    for _, row in df_new.iterrows():
+        nombre_raw = row.get("Nombre", row.get("nombre", ""))
+        cant_raw   = row.get("Cantidad", row.get("CANT", 0))
+        key = str(nombre_raw).strip().upper()
+        if key:
+            new_map[key] = {
+                "display": str(nombre_raw),
+                "cant": float(cant_raw) if pd.notna(cant_raw) else 0.0,
+            }
+
+    all_keys = set(old_map) | set(new_map)
+    parts = []
+    n_modified = n_added = n_removed = 0
+
+    for key in sorted(all_keys):
+        in_old = key in old_map
+        in_new = key in new_map
+        if in_old and in_new:
+            old_c = old_map[key]["cant"]
+            new_c = new_map[key]["cant"]
+            if abs(new_c - old_c) > 1e-6:
+                n_modified += 1
+                sign = "+" if (new_c - old_c) > 0 else ""
+                parts.append(f"{new_map[key]['display']}: {old_c:.2f}→{new_c:.2f} ({sign}{new_c - old_c:.2f})")
+        elif in_old:
+            n_removed += 1
+            parts.append(f"-{old_map[key]['display']}")
+        else:
+            n_added += 1
+            parts.append(f"+{new_map[key]['display']}")
+
+    detalle = " | ".join(parts) if parts else "Sin cambios en ingredientes"
+    return n_modified, n_added, n_removed, detalle
+
+
+def registrar_historial(formula_key, df_old, df_new, observaciones=""):
+    """
+    Agrega una fila de auditoría a la hoja Formula_Historial.
+    Se llama después de cada actualización exitosa.
+    """
+    n_modified, n_added, n_removed, detalle = _compute_change_detail(df_old, df_new)
+
+    historial_row = [
+        formula_key,                                        # A: Formula_Key
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),       # B: Fecha_Modificacion
+        len(df_old),                                        # C: Ingredientes_Antes
+        len(df_new),                                        # D: Ingredientes_Despues
+        n_modified,                                         # E: Modificados
+        n_added,                                            # F: Nuevos
+        n_removed,                                          # G: Removidos
+        observaciones,                                      # H: Observaciones
+        detalle,                                            # I: Cambios_Detalle
+    ]
+
+    try:
+        append_sheet("Formula_Historial", historial_row)
+        print(f"✅ Historial registrado para '{formula_key}'")
+    except Exception as e:
+        # No crítico — no falla el update si el historial falla
+        print(f"⚠️ No se pudo registrar historial: {e}")
 
 
 def listar_formulas(marca=None, tipo=None, estatus="ACTIVA"):
