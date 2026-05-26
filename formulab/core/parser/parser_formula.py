@@ -62,7 +62,7 @@ def split_loose_v2(line):
     tokens, buffer = [], []
     words = line.split()
     for word in words:
-        if re.match(r"^[A-Z]{2,3}-\d{3,5}$", word):  # Código (SV-0001 / PE-010 / etc.)
+        if re.match(r"^[A-Z]{2,3}-\d{3,5}[A-Z]*$", word):  # Código (SV-0001 / PE-078D / etc.)
             if buffer:
                 tokens.append(" ".join(buffer)); buffer = []
             tokens.append(word)
@@ -425,9 +425,7 @@ def build_formula_key(meta, brand_code=None, override_key=None):
     return f"{brand_prefix}-{tipo_tag}-{color_tag}"
 # ==================== PARSEO DE INGREDIENTES ====================
 
-CODE_PAT = re.compile(r"^[A-Z]{2,3}-\d{3,5}\b")
-
-CODE_PAT = re.compile(r"^[A-Z]{2,3}-\d{3,5}\b")
+CODE_PAT = re.compile(r"^[A-Z]{2,3}-\d{3,5}[A-Z]*\b")
 
 def parse_rows(all_text):
     """
