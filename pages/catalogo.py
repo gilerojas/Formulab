@@ -7,7 +7,12 @@ import pandas as pd
 from utils.styling import render_header, apply_custom_css, COLORS
 
 # Importar managers de Sheets
-from formulab.sheets.formulas_manager import listar_formulas, obtener_ingredientes_formula
+from formulab.sheets.formulas_manager import (
+    eliminar_formula,
+    listar_formulas,
+    obtener_impacto_eliminacion_formula,
+    obtener_ingredientes_formula,
+)
 
 apply_custom_css()
 
@@ -167,6 +172,60 @@ if not df.empty:
                     disabled=True  # Habilitaremos en Fase 2
                 ):
                     st.info("Función PDF próximamente")
+
+            st.markdown("---")
+            with st.expander("Zona de eliminación"):
+                st.warning(
+                    "Esta acción borra solo el Formula_Key exacto en "
+                    "GREQ_Formulas y Formulas_Detalle. No toca órdenes ni historial."
+                )
+
+                try:
+                    impacto = obtener_impacto_eliminacion_formula(formula_key)
+                except Exception as e:
+                    st.error(f"No se pudo calcular el impacto: {e}")
+                    impacto = None
+
+                if impacto:
+                    col_i1, col_i2 = st.columns(2)
+                    with col_i1:
+                        st.metric("Filas en GREQ_Formulas", len(impacto["formula_rows"]))
+                    with col_i2:
+                        st.metric("Filas en Formulas_Detalle", len(impacto["detalle_rows"]))
+
+                    if not impacto["can_delete"]:
+                        st.error(impacto["reason"])
+                    else:
+                        confirm_key = st.text_input(
+                            "Para borrar, escribe el Formula_Key exacto:",
+                            key=f"delete_confirm_{formula_key}",
+                            placeholder=formula_key,
+                        )
+                        understand = st.checkbox(
+                            "Entiendo que esta acción borra la fórmula del catálogo.",
+                            key=f"delete_ack_{formula_key}",
+                        )
+                        can_submit = confirm_key.strip() == formula_key and understand
+                        if st.button(
+                            "Borrar fórmula",
+                            key=f"btn_delete_{formula_key}",
+                            type="secondary",
+                            disabled=not can_submit,
+                            use_container_width=True,
+                        ):
+                            success, message, delete_impact = eliminar_formula(
+                                formula_key,
+                                confirm_key,
+                            )
+                            if success:
+                                st.success(
+                                    f"{message} Se borró 1 fila de GREQ_Formulas y "
+                                    f"{len(delete_impact['detalle_rows'])} filas de Formulas_Detalle."
+                                )
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error(message)
             
 else:
     st.info("📭 No hay fórmulas que coincidan con los filtros")

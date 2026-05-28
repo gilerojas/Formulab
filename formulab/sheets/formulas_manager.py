@@ -377,3 +377,72 @@ def obtener_ingredientes_formula(formula_key):
     except Exception as e:
         print(f"❌ Error obteniendo ingredientes: {e}")
         return pd.DataFrame()
+
+
+def obtener_impacto_eliminacion_formula(formula_key):
+    """
+    Devuelve el alcance exacto de una eliminación sin modificar Google Sheets.
+
+    Solo cuenta coincidencias exactas de Formula_Key en:
+      - GREQ_Formulas, columna A
+      - Formulas_Detalle, columna A
+    """
+    formula_key = str(formula_key).strip()
+    if not formula_key:
+        return {
+            "formula_key": "",
+            "formula_rows": [],
+            "detalle_rows": [],
+            "can_delete": False,
+            "reason": "Formula_Key vacío",
+        }
+
+    formula_rows = find_row_indices_by_value("GREQ_Formulas", 0, formula_key)
+    detalle_rows = find_row_indices_by_value("Formulas_Detalle", 0, formula_key)
+
+    can_delete = len(formula_rows) == 1
+    reason = ""
+    if len(formula_rows) == 0:
+        reason = "No existe una fila exacta en GREQ_Formulas"
+    elif len(formula_rows) > 1:
+        reason = "Hay más de una fila exacta en GREQ_Formulas; requiere revisión manual"
+
+    return {
+        "formula_key": formula_key,
+        "formula_rows": formula_rows,
+        "detalle_rows": detalle_rows,
+        "can_delete": can_delete,
+        "reason": reason,
+    }
+
+
+def eliminar_formula(formula_key, confirm_formula_key):
+    """
+    Elimina una fórmula exacta del catálogo.
+
+    Precisión:
+      - Requiere confirmación textual idéntica al Formula_Key.
+      - Borra solo coincidencias exactas en columna A.
+      - Borra filas de abajo hacia arriba para no desplazar índices pendientes.
+      - No toca órdenes, historial ni otras hojas.
+    """
+    formula_key = str(formula_key).strip()
+    confirm_formula_key = str(confirm_formula_key).strip()
+
+    if formula_key != confirm_formula_key:
+        return False, "La confirmación no coincide exactamente con el Formula_Key.", {}
+
+    impacto = obtener_impacto_eliminacion_formula(formula_key)
+    if not impacto["can_delete"]:
+        return False, impacto["reason"], impacto
+
+    try:
+        for row_idx in sorted(impacto["detalle_rows"], reverse=True):
+            delete_rows("Formulas_Detalle", row_idx)
+
+        for row_idx in sorted(impacto["formula_rows"], reverse=True):
+            delete_rows("GREQ_Formulas", row_idx)
+
+        return True, "Fórmula eliminada correctamente.", impacto
+    except Exception as e:
+        return False, f"Error eliminando fórmula: {e}", impacto

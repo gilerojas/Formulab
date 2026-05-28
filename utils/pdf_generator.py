@@ -40,11 +40,39 @@ FIXED_BLOCKS_INCH = 1.9
 AVAILABLE_TABLE_INCH = PAGE_HEIGHT_INCH - MARGIN_TOP_BOTTOM_INCH - FIXED_BLOCKS_INCH
 AVAILABLE_TABLE_PT = AVAILABLE_TABLE_INCH * 72
 FONT_MIN, FONT_MAX = 5, 12
+FONT_DENSE_MIN = 4
 # Padding mínimo en celdas para que el texto no solape los bordes
 PAD_CELL_MIN_PT = 4
+PAD_CELL_DENSE_MIN_PT = 1.2
 # Referencia de filas para el factor de escala (arriba de esto = contraer, abajo = expandir)
 REF_ROWS = 22
 BLOCK_SCALE_MIN, BLOCK_SCALE_MAX = 0.72, 1.15
+
+
+def _combine_adjacent_duplicate_ingredients(df_escalado):
+    """Combina filas consecutivas iguales de la misma etapa, preservando el total."""
+    if df_escalado is None or df_escalado.empty:
+        return df_escalado
+
+    rows = []
+    key_cols = ["etapa", "Etapa", "CODIGO", "nombre"]
+
+    for _, row in df_escalado.iterrows():
+        current = row.copy()
+        current_key = tuple(current.get(col, "") for col in key_cols)
+
+        if rows:
+            previous = rows[-1]
+            previous_key = tuple(previous.get(col, "") for col in key_cols)
+            if current_key == previous_key:
+                for col in ["KG_PRO", "GL_PRO", "CANT"]:
+                    if col in current.index and col in previous.index:
+                        previous[col] = (previous.get(col, 0) or 0) + (current.get(col, 0) or 0)
+                continue
+
+        rows.append(current)
+
+    return df_escalado.__class__(rows).reset_index(drop=True)
 
 
 def _count_table_rows(df_escalado) -> int:
@@ -68,22 +96,30 @@ def _compute_table_layout(n_rows: int):
     if n_rows <= 0:
         n_rows = 1
     height_per_row_pt = AVAILABLE_TABLE_PT / n_rows
-    # Padding: mínimo 4 pt para que no solape; máximo ~30% de la fila
-    pad = max(PAD_CELL_MIN_PT, int(height_per_row_pt * 0.15))
-    pad = min(pad, max(PAD_CELL_MIN_PT, int(height_per_row_pt * 0.35)))
-    # Fuente: lo que quepa con ese padding (leading ≈ 1.2 * fontSize)
+    dense_layout = n_rows > REF_ROWS or height_per_row_pt < (FONT_MIN * 1.2 + PAD_CELL_MIN_PT * 2)
+    min_pad = PAD_CELL_DENSE_MIN_PT if dense_layout else PAD_CELL_MIN_PT
+    min_font = FONT_DENSE_MIN if n_rows > 40 else FONT_MIN
+    # Padding: en tablas muy largas baja de 4 pt para que ReportLab no salte página.
+    pad = max(min_pad, height_per_row_pt * 0.15)
+    pad = min(pad, max(min_pad, height_per_row_pt * 0.35))
+    # Fuente: lo que quepa con ese padding (leading ≈ 1.2 * fontSize).
     font_calc = (height_per_row_pt - 2 * pad) / 1.2
-    font_clamped = max(FONT_MIN, min(FONT_MAX, int(math.floor(font_calc))))
-    if font_clamped < FONT_MIN and pad > PAD_CELL_MIN_PT:
-        pad = max(PAD_CELL_MIN_PT, int((height_per_row_pt - FONT_MIN * 1.2) / 2))
-        font_clamped = FONT_MIN
+    font_clamped = max(min_font, min(FONT_MAX, int(math.floor(font_calc))))
+    if font_calc < FONT_MIN and pad > min_pad:
+        pad = max(min_pad, (height_per_row_pt - min_font * 1.2) / 2)
+    if n_rows > REF_ROWS:
+        # Evita que tablas medianas crezcan tanto que metadatos largos manden la firma a otra página.
+        row_scale = REF_ROWS / n_rows
+        font_clamped = min(font_clamped, max(min_font, int(math.floor(FONT_MAX * row_scale))))
+        pad = min(pad, max(min_pad, font_clamped * 0.3))
     return {
         "fontSize_header": font_clamped,
-        "fontSize_codigo": max(FONT_MIN, font_clamped - 1),
+        "fontSize_codigo": max(min_font, font_clamped - 1),
         "fontSize_nombre": font_clamped,
         "fontSize_nums": min(FONT_MAX, font_clamped + 1),
         "fontSize_etapa": font_clamped,
-        "padding_pt": max(PAD_CELL_MIN_PT, pad),
+        "padding_pt": max(min_pad, pad),
+        "row_height_pt": (font_clamped * 1.2) + (2 * max(min_pad, pad)),
     }
 
 
@@ -130,6 +166,8 @@ def generar_pdf_orden(
     if not output_path:
         output_path = f"/tmp/orden_{orden_id}.pdf"
     
+    df_escalado = _combine_adjacent_duplicate_ingredients(df_escalado)
+
     # ----- Sistema unificado: precalcular n_rows y escalas -----
     n_table_rows = _count_table_rows(df_escalado)
     layout = _compute_table_layout(n_table_rows)
@@ -332,6 +370,7 @@ def generar_pdf_orden(
     fs_num = layout["fontSize_nums"]
     fs_etapa = layout["fontSize_etapa"]
     pad = layout["padding_pt"]
+    row_height = layout["row_height_pt"] if n_table_rows > REF_ROWS else None
     
     # Reemplazar placeholders __ETAPA__nombre por Paragraphs con fuente escalada
     for i in range(1, len(table_data) - 1):
@@ -354,6 +393,7 @@ def generar_pdf_orden(
     ingredients_table = Table(
         table_data,
         colWidths=[0.7*inch, 4.0*inch, 1.0*inch, 1.0*inch],
+        rowHeights=([row_height] * len(table_data)) if row_height else None,
         repeatRows=1
     )
     
