@@ -8,11 +8,18 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv()
 
-WAS_TOKEN = os.getenv("WASENDER_API_KEY")
-GROUP_GREQ_FORMULAB = os.getenv("GROUP_GREQ_TECNICO")
+def _get_whatsapp_config():
+    """Carga credenciales solo al enviar, no al importar la página."""
+    token = os.getenv("WASENDER_API_KEY")
+    group = os.getenv("GROUP_GREQ_TECNICO")
+
+    if token and group:
+        return token, group
+
+    load_dotenv()
+    return os.getenv("WASENDER_API_KEY"), os.getenv("GROUP_GREQ_TECNICO")
+
 
 def enviar_notificacion_orden(
     orden_id: str,
@@ -35,8 +42,10 @@ def enviar_notificacion_orden(
         bool: True si envío exitoso
     """
     
+    was_token, group_greq_formulab = _get_whatsapp_config()
+
     # Validar credenciales
-    if not WAS_TOKEN or not GROUP_GREQ_FORMULAB:
+    if not was_token or not group_greq_formulab:
         print("❌ Error: WASENDER_API_KEY o GROUP_ID_TEST no configurados en .env")
         return False
     
@@ -69,12 +78,12 @@ def enviar_notificacion_orden(
         url = "https://www.wasenderapi.com/api/send-message"
         
         headers = {
-            "Authorization": f"Bearer {WAS_TOKEN}",
+            "Authorization": f"Bearer {was_token}",
             "Content-Type": "application/json"
         }
         
         payload = {
-            "to": GROUP_GREQ_FORMULAB,
+            "to": group_greq_formulab,
             "text": mensaje
         }
         

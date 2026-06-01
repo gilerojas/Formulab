@@ -333,14 +333,20 @@ def listar_formulas(marca=None, tipo=None, estatus="ACTIVA"):
             return pd.DataFrame()
         
         df = pd.DataFrame(data[1:], columns=data[0])
+        for col in ["Formula_Key", "Marca", "Tipo", "Estatus"]:
+            if col in df.columns:
+                df[col] = df[col].fillna("").astype(str).str.strip()
         
         # Aplicar filtros
-        if estatus:
-            df = df[df["Estatus"] == estatus]
-        if marca:
-            df = df[df["Marca"] == marca]
-        if tipo:
-            df = df[df["Tipo"] == tipo]
+        if estatus and "Estatus" in df.columns:
+            estatus_norm = str(estatus).strip().upper()
+            df = df[df["Estatus"].str.upper() == estatus_norm]
+        if marca and "Marca" in df.columns:
+            marca_norm = str(marca).strip().upper()
+            df = df[df["Marca"].str.upper() == marca_norm]
+        if tipo and "Tipo" in df.columns:
+            tipo_norm = str(tipo).strip().upper()
+            df = df[df["Tipo"].str.upper() == tipo_norm]
         
         return df
     

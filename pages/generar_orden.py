@@ -109,9 +109,12 @@ def load_formulas(marca=None, tipo=None):
     
     # Filtrar por marca
     if marca and marca != "TODAS":
-        df = df[df["Marca"].str.upper() == marca.upper()]
+        marca_norm = str(marca).strip().upper()
+        df = df[df["Marca"].fillna("").astype(str).str.strip().str.upper() == marca_norm]
     
     # Extraer tipo de cada Formula_Key
+    df = df.copy()
+    df["Formula_Key"] = df["Formula_Key"].fillna("").astype(str).str.strip()
     df["Tipo_Extraido"] = df["Formula_Key"].apply(extraer_tipo_de_formula_key)
     
     # Filtrar por tipo
@@ -229,6 +232,10 @@ st.markdown("---")
 
 
 # ===== CARGAR FÓRMULAS FILTRADAS =====
+if st.button("🔄 Refrescar catálogo desde Sheets", use_container_width=True, key="btn_refresh_formulas"):
+    st.cache_data.clear()
+    st.rerun()
+
 with st.spinner(f"📡 Cargando fórmulas de {marca_actual}..."):
     df_formulas = load_formulas(marca=marca_actual, tipo=tipo_actual)
 
