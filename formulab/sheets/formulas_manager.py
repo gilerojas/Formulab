@@ -30,7 +30,12 @@ def guardar_formula(result, observaciones=""):
     print(f"  - Columnas DF: {df_escalado.columns.tolist()}")
     
     # Verificar si ya existe
-    existing = buscar_formula(fkey)
+    try:
+        existing = buscar_formula(fkey, raise_errors=True)
+    except Exception as e:
+        print(f"❌ No se pudo verificar si '{fkey}' existe. Guardado abortado: {e}")
+        return fkey, False
+
     if existing:
         print(f"⚠️ La fórmula '{fkey}' ya existe en el catálogo.")
         return fkey, False
@@ -113,7 +118,7 @@ def guardar_formula(result, observaciones=""):
     print(f"\n✅ Fórmula '{fkey}' guardada exitosamente ({len(detalle_rows)} ingredientes)")
     return fkey, True
 
-def buscar_formula(formula_key):
+def buscar_formula(formula_key, raise_errors=False):
     """
     Busca una fórmula por su Formula_Key.
     
@@ -154,6 +159,8 @@ def buscar_formula(formula_key):
         print(f"❌ Error buscando fórmula: {e}")
         import traceback
         traceback.print_exc()
+        if raise_errors:
+            raise
         return None
 
 
@@ -172,7 +179,12 @@ def actualizar_formula(formula_key, formula_meta, df_ingredientes, observaciones
     Returns:
         tuple: (formula_key, success)
     """
-    existing = buscar_formula(formula_key)
+    try:
+        existing = buscar_formula(formula_key, raise_errors=True)
+    except Exception as e:
+        print(f"❌ No se pudo verificar si '{formula_key}' existe. Actualización abortada: {e}")
+        return formula_key, False
+
     if not existing:
         print(f"⚠️ La fórmula '{formula_key}' no existe. Usa guardar_formula para crear.")
         return formula_key, False
@@ -370,7 +382,7 @@ def obtener_ingredientes_formula(formula_key):
             return pd.DataFrame()
         
         df = pd.DataFrame(data[1:], columns=data[0])
-        df_formula = df[df["Formula_Key"] == formula_key]
+        df_formula = df[df["Formula_Key"] == formula_key].copy()
         
         # Convertir tipos numéricos
         numeric_cols = ["Linea", "Cantidad", "Densidad_KG_GL"]

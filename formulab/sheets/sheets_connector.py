@@ -9,6 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit as st
 import os
+import time
 
 # Configuración
 LOCAL_CREDENTIALS_PATH = "vocal-tracker-453720-p1-2c9dfa471a22.json"
@@ -17,6 +18,30 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
+
+_SHEETS_CLIENT = None
+_SPREADSHEETS = {}
+_WORKSHEETS = {}
+_READ_CACHE = {}
+_READ_CACHE_TTL_SECONDS = 60
+
+
+def clear_sheet_cache(sheet_name=None):
+    """Limpia cache local de lecturas/objetos de Sheets."""
+    global _SHEETS_CLIENT
+    if sheet_name is None:
+        _READ_CACHE.clear()
+        _WORKSHEETS.clear()
+        _SPREADSHEETS.clear()
+        _SHEETS_CLIENT = None
+        return
+
+    for key in list(_READ_CACHE):
+        if key[0] == sheet_name:
+            _READ_CACHE.pop(key, None)
+    for key in list(_WORKSHEETS):
+        if key[1] == sheet_name:
+            _WORKSHEETS.pop(key, None)
 
 
 def get_credentials():
@@ -44,18 +69,32 @@ def get_credentials():
 
 def get_sheets_client():
     """Retorna cliente autenticado de gspread"""
+    global _SHEETS_CLIENT
+    if _SHEETS_CLIENT is not None:
+        return _SHEETS_CLIENT
+
     credentials = get_credentials()
-    return gspread.authorize(credentials)
+    _SHEETS_CLIENT = gspread.authorize(credentials)
+    return _SHEETS_CLIENT
 
 
 def get_spreadsheet(spreadsheet_id=SPREADSHEET_ID):
     """Abre el spreadsheet de Formulab"""
+    if spreadsheet_id in _SPREADSHEETS:
+        return _SPREADSHEETS[spreadsheet_id]
+
     client = get_sheets_client()
-    return client.open_by_key(spreadsheet_id)
+    spreadsheet = client.open_by_key(spreadsheet_id)
+    _SPREADSHEETS[spreadsheet_id] = spreadsheet
+    return spreadsheet
 
 
 def get_worksheet(sheet_name, create_if_missing=True):
     """Obtiene una hoja específica, la crea si no existe"""
+    cache_key = (SPREADSHEET_ID, sheet_name)
+    if cache_key in _WORKSHEETS:
+        return _WORKSHEETS[cache_key]
+
     spreadsheet = get_spreadsheet()
     
     try:
@@ -67,11 +106,18 @@ def get_worksheet(sheet_name, create_if_missing=True):
         else:
             raise
     
+    _WORKSHEETS[cache_key] = worksheet
     return worksheet
 
 
 def read_sheet(sheet_name, range_name=None):
     """Lee datos de una hoja"""
+    cache_key = (sheet_name, range_name or "__all__")
+    cached = _READ_CACHE.get(cache_key)
+    now = time.time()
+    if cached and now - cached["time"] < _READ_CACHE_TTL_SECONDS:
+        return cached["values"]
+
     worksheet = get_worksheet(sheet_name, create_if_missing=False)
     
     if range_name:
@@ -79,6 +125,7 @@ def read_sheet(sheet_name, range_name=None):
     else:
         values = worksheet.get_all_values()
     
+    _READ_CACHE[cache_key] = {"time": now, "values": values}
     return values
 
 
@@ -86,6 +133,7 @@ def write_sheet(sheet_name, range_name, values):
     """Escribe datos en una hoja (sobrescribe)"""
     worksheet = get_worksheet(sheet_name)
     worksheet.update(range_name, values)
+    clear_sheet_cache(sheet_name)
 
 
 def append_sheet(sheet_name, values):
@@ -96,6 +144,7 @@ def append_sheet(sheet_name, values):
         values = [values]
     
     worksheet.append_rows(values)
+    clear_sheet_cache(sheet_name)
 
 
 def find_row_index_by_value(sheet_name, column_a_value):
@@ -103,8 +152,7 @@ def find_row_index_by_value(sheet_name, column_a_value):
     Busca el índice de la primera fila (1-based) donde la columna A coincide.
     Returns: int or None
     """
-    worksheet = get_worksheet(sheet_name, create_if_missing=False)
-    data = worksheet.get_all_values()
+    data = read_sheet(sheet_name)
     if not data:
         return None
     for i, row in enumerate(data):
@@ -118,8 +166,7 @@ def find_row_indices_by_value(sheet_name, column_index, value):
     Busca todos los índices de fila (1-based) donde la columna dada coincide.
     Returns: list of int
     """
-    worksheet = get_worksheet(sheet_name, create_if_missing=False)
-    data = worksheet.get_all_values()
+    data = read_sheet(sheet_name)
     if not data:
         return []
     return [i + 1 for i, row in enumerate(data) if len(row) > column_index and str(row[column_index]).strip() == str(value).strip()]
@@ -136,6 +183,7 @@ def update_row(sheet_name, row_index_1based, values):
     end_col = chr(ord("A") + ncols - 1) if ncols <= 26 else "Z"
     range_name = f"A{row_index_1based}:{end_col}{row_index_1based}"
     worksheet.update(range_name, values)
+    clear_sheet_cache(sheet_name)
 
 
 def delete_rows(sheet_name, start_row_1based, end_row_1based=None):
@@ -143,12 +191,14 @@ def delete_rows(sheet_name, start_row_1based, end_row_1based=None):
     worksheet = get_worksheet(sheet_name)
     end = end_row_1based if end_row_1based is not None else start_row_1based
     worksheet.delete_rows(start_row_1based, end)
+    clear_sheet_cache(sheet_name)
 
 
 def clear_sheet(sheet_name):
     """Limpia todo el contenido de una hoja"""
     worksheet = get_worksheet(sheet_name, create_if_missing=False)
     worksheet.clear()
+    clear_sheet_cache(sheet_name)
 
 
 def initialize_sheets():
